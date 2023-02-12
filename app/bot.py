@@ -1,35 +1,50 @@
 import telebot
-# from app.utils import init_logging
+from app.utils import init_logging
 # from app.telegram_user import TelegramUser
-# from app.game import Game
-# from app.game_registry import GameRegistry
-# from app.game_session import GameSession
-# import asyncio
-# import logbook
+# from app.mortgage import Mortgage
+from app.mortgage_registry import MortgageRegistry
+from app.mortgage_count import MortgageCount
+import logbook
 import os
 
-BOT_API_TOKEN = os.environ["MORST_BOT_API_TOKEN"]
-DB_PATH = os.environ["MORST_BOT_DB_PATH"]
+BOT_API_TOKEN = os.environ['MORST_BOT_API_TOKEN']
+DB_PATH = os.environ['MORST_BOT_DB_PATH']
 
-GREETING = """
+GREETING = '''
 To start *MorstBot* use /default command.
 This will add all parameters of mortgage and you could check if calculations is wright.
 
 [MorstBot on GitHub](https://github.com/osipovamarya/telegram-mortgage-strategy-bot)
-"""
+'''
 
 bot = telebot.TeleBot(BOT_API_TOKEN)
+mortgage_registry = MortgageRegistry()
+init_logging()
+
 
 
 @bot.message_handler(commands=['start', 'help'])
 def on_help_command(message):
-    bot.reply_to(message, GREETING)
+    bot.send_message(message.chat.id, GREETING)
 
 
 @bot.message_handler(commands=['default'])
-def on_help_command(message):
-    bot.reply_to(message, "Тут будет базовый расчет")
-
+def on_default_command(message):
+    logbook.info('Создаем расчет')
+    bot.send_message(message.chat.id, 'Давайте начнем расчет, следуйте инструкциям бота')
+    name = bot.send_message(message.chat.id, 'Введите название')
+    logbook.info(f'name = {name}')
+    bot.register_next_step_handler(name, create_count)
+    # main_debt_sum = bot.send_message(message.chat.id, 'Введите остаток основного долга')
+    # bot.register_next_step_handler(main_debt_sum, update_count)
+    # percent = bot.send_message(message.chat.id, 'Введите процент')
+    # bot.register_next_step_handler(percent, update_count)
+    # mortgage_start = bot.send_message(message.chat.id, 'Введите дату начала ипотеки')
+    # bot.register_next_step_handler(mortgage_start, update_count)
+    # first_payment_date = bot.send_message(message.chat.id, 'Введите дату первого платежа')
+    # bot.register_next_step_handler(first_payment_date, update_count)
+    # last_payment_date = bot.send_message(message.chat.id, 'Введите дату последнего платежа')
+    # bot.register_next_step_handler(last_payment_date, update_count)
 
 # async def on_default_command(chat: Chat, match):
 #     chat_id = chat.id
@@ -47,7 +62,7 @@ def on_help_command(message):
 #         )
 #         return
 #
-#     game = Game(chat_id, facilitator_message_id, game_name, facilitator)
+#     game = Mortgage(chat_id, facilitator_message_id, game_name, facilitator)
 #     await create_game(chat, game)
 #
 #
@@ -80,7 +95,7 @@ def on_help_command(message):
 #
 #     game = await game_registry.find_active_game(chat_id, facilitator)
 #
-#     game_session = GameSession(game, chat_id, facilitator_message_id, topic, facilitator)
+#     game_session = MortgageCount(game, chat_id, facilitator_message_id, topic, facilitator)
 #     await create_game_session(chat, game_session)
 #
 #
@@ -95,11 +110,11 @@ def on_help_command(message):
 #     if not game_session:
 #         return await callback_query.answer(text="No such game session")
 #
-#     if game_session.phase not in GameSession.PHASE_DISCUSSION:
-#         return await callback_query.answer(text="Can't vote not in " + GameSession.PHASE_DISCUSSION + " phase")
+#     if game_session.phase not in MortgageCount.PHASE_DISCUSSION:
+#         return await callback_query.answer(text="Can't vote not in " + MortgageCount.PHASE_DISCUSSION + " phase")
 #
 #     if not game_session.game.is_active():
-#         return await callback_query.answer(text="Game already ended")
+#         return await callback_query.answer(text="Mortgage already ended")
 #
 #     game_session.add_discussion_vote(callback_query.src["from"], vote)
 #     await game_registry.update_game_session(game_session)
@@ -121,11 +136,11 @@ def on_help_command(message):
 #     if not game_session:
 #         return await callback_query.answer(text="No such game session")
 #
-#     if game_session.phase not in GameSession.PHASE_ESTIMATION:
-#         return await callback_query.answer(text="Can't vote not in " + GameSession.PHASE_ESTIMATION + " phase")
+#     if game_session.phase not in MortgageCount.PHASE_ESTIMATION:
+#         return await callback_query.answer(text="Can't vote not in " + MortgageCount.PHASE_ESTIMATION + " phase")
 #
 #     if not game_session.game.is_active():
-#         return await callback_query.answer(text="Game already ended")
+#         return await callback_query.answer(text="Mortgage already ended")
 #
 #     game_session.add_estimation_vote(callback_query.src["from"], vote)
 #     await game_registry.update_game_session(game_session)
@@ -149,15 +164,15 @@ def on_help_command(message):
 #         return await callback_query.answer(text="Operation `{}` is available only for facilitator".format(operation))
 #
 #     if not game_session.game.is_active():
-#         return await callback_query.answer(text="Game already ended")
+#         return await callback_query.answer(text="Mortgage already ended")
 #
-#     if operation in GameSession.OPERATION_START_ESTIMATION:
+#     if operation in MortgageCount.OPERATION_START_ESTIMATION:
 #         await run_operation_start_estimation(chat, game_session)
-#     elif operation in GameSession.OPERATION_END_ESTIMATION:
+#     elif operation in MortgageCount.OPERATION_END_ESTIMATION:
 #         await run_operation_end_estimation(chat, game_session)
-#     elif operation in GameSession.OPERATION_CLEAR_VOTES:
+#     elif operation in MortgageCount.OPERATION_CLEAR_VOTES:
 #         await run_operation_clear_votes(chat, game_session)
-#     elif operation in GameSession.OPERATION_RE_ESTIMATE:
+#     elif operation in MortgageCount.OPERATION_RE_ESTIMATE:
 #         await run_re_estimate(chat, game_session)
 #     else:
 #         raise Exception("Unknown operation `{}`".format(operation))
@@ -165,25 +180,25 @@ def on_help_command(message):
 #     await callback_query.answer()
 #
 #
-# async def run_operation_start_estimation(chat: Chat, game_session: GameSession):
+# async def run_operation_start_estimation(chat: Chat, game_session: MortgageCount):
 #     game_session.start_estimation()
 #     await edit_message(chat, game_session)
 #     await game_registry.update_game_session(game_session)
 #
 #
-# async def run_operation_clear_votes(chat: Chat, game_session: GameSession):
+# async def run_operation_clear_votes(chat: Chat, game_session: MortgageCount):
 #     game_session.clear_votes()
 #     await edit_message(chat, game_session)
 #     await game_registry.update_game_session(game_session)
 #
 #
-# async def run_operation_end_estimation(chat: Chat, game_session: GameSession):
+# async def run_operation_end_estimation(chat: Chat, game_session: MortgageCount):
 #     game_session.end_estimation()
 #     await edit_message(chat, game_session)
 #     await game_registry.update_game_session(game_session)
 #
 #
-# async def run_re_estimate(chat: Chat, game_session: GameSession):
+# async def run_re_estimate(chat: Chat, game_session: MortgageCount):
 #     message = {
 #         "text": game_session.render_system_message_text(),
 #     }
@@ -198,37 +213,47 @@ def on_help_command(message):
 #
 #     await create_game_session(chat, game_session)
 #
-#
-# async def create_game(chat: Chat, game_prototype: Game):
-#     response = await chat.send_text(**game_prototype.render_system_message())
-#     game_prototype.system_message_id = response["result"]["message_id"]
-#     await game_registry.create_game(game_prototype)
-#
-#
-# async def end_game(chat: Chat, game: Game):
+# async def end_game(chat: Chat, game: Mortgage):
 #     game.end()
 #     await game_registry.update_game(game)
 #     game_statistics = await game_registry.get_game_statistics(game)
 #     await chat.send_text(**game.render_results_system_message(game_statistics))
+
+# def update_count(message):
+#     # response = message.send_text(**mortgage_count.render_system_message())
+#     # game_session_prototype.system_message_id = response["result"]["message_id"]
+#     logbook.info('Дополняем данные расчета')
+#     logbook.info(message)
+#     logbook.info('message.text = ', message.text)
+#     mortgage_count = MortgageCount(message.chat.id, message.text)
+#     mortgage_registry.update_count(mortgage_count)
+
+
+def create_count(message):
+    # response = message.send_text(**mortgage_count.render_system_message())
+    # game_session_prototype.system_message_id = response["result"]["message_id"]
+    logbook.info('Заполняем основные данные расчета')
+    logbook.info(message)
+    message_text = message.text
+    logbook.info(f'message.text = {message_text}')
+    mortgage_count = MortgageCount(message.chat.id, message_text)
+    logbook.info(mortgage_count.__dict__)
+    mortgage_registry.create_count(mortgage_count)
 #
-#
-# async def create_game_session(chat: Chat, game_session_prototype: GameSession):
-#     response = await chat.send_text(**game_session_prototype.render_system_message())
-#     game_session_prototype.system_message_id = response["result"]["message_id"]
-#     await game_registry.create_game_session(game_session_prototype)
-#
-#
-# async def edit_message(chat: Chat, game_session: GameSession):
+# async def edit_message(chat: Chat, game_session: MortgageCount):
 #     try:
 #         await bot.edit_message_text(chat.id, game_session.system_message_id, **game_session.render_system_message())
 #     except BotApiError:
 #         logbook.exception("Error when updating markup")
 #
-#
+
+
 def main():
-    # loop = asyncio.get_event_loop()
-    # loop.run_until_complete(game_registry.init_db(DB_PATH))
+    logbook.info('Начинаем создавать бд')
+    mortgage_registry.init_db(DB_PATH)
+    logbook.info('Создали бд')
     bot.polling(none_stop=True)
+
 
 if __name__ == "__main__":
     main()

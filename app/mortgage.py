@@ -1,10 +1,7 @@
 from app.telegram_user import TelegramUser
 
 
-class Game:
-    STATUS_STARTED = "started"
-    STATUS_ENDED = "ended"
-
+class Mortgage:
     def __init__(self, chat_id: int, facilitator_message_id: int, name: str, facilitator: TelegramUser):
         self.id = None
         self.system_message_id = None
@@ -56,9 +53,9 @@ class Game:
 
     def render_name_text(self) -> str:
         if self.status == self.STATUS_STARTED:
-            return "Game started: " + self.name
+            return "Mortgage started: " + self.name
         elif self.status == self.STATUS_ENDED:
-            return "Game ended: " + self.name
+            return "Mortgage ended: " + self.name
         else:
             return ""
 
