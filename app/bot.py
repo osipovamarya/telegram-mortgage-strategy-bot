@@ -4,6 +4,7 @@ from app.utils import init_logging
 # from app.mortgage import Mortgage
 from app.mortgage_registry import MortgageRegistry
 from app.mortgage_count import MortgageCount
+from collections import defaultdict
 import logbook
 import os
 
@@ -19,8 +20,8 @@ This will add all parameters of mortgage and you could check if calculations is 
 
 bot = telebot.TeleBot(BOT_API_TOKEN)
 mortgage_registry = MortgageRegistry()
+current_count = defaultdict(str)
 init_logging()
-
 
 
 @bot.message_handler(commands=['start', 'help'])
@@ -29,22 +30,59 @@ def on_help_command(message):
 
 
 @bot.message_handler(commands=['default'])
-def on_default_command(message):
-    logbook.info('Создаем расчет')
+def get_count_name(message):
     bot.send_message(message.chat.id, 'Давайте начнем расчет, следуйте инструкциям бота')
-    name = bot.send_message(message.chat.id, 'Введите название')
-    logbook.info(f'name = {name}')
-    bot.register_next_step_handler(name, create_count)
-    # main_debt_sum = bot.send_message(message.chat.id, 'Введите остаток основного долга')
-    # bot.register_next_step_handler(main_debt_sum, update_count)
-    # percent = bot.send_message(message.chat.id, 'Введите процент')
-    # bot.register_next_step_handler(percent, update_count)
-    # mortgage_start = bot.send_message(message.chat.id, 'Введите дату начала ипотеки')
-    # bot.register_next_step_handler(mortgage_start, update_count)
-    # first_payment_date = bot.send_message(message.chat.id, 'Введите дату первого платежа')
-    # bot.register_next_step_handler(first_payment_date, update_count)
-    # last_payment_date = bot.send_message(message.chat.id, 'Введите дату последнего платежа')
-    # bot.register_next_step_handler(last_payment_date, update_count)
+    msg = bot.send_message(message.chat.id, 'Введите название')
+    bot.register_next_step_handler(msg, get_count_sum)
+
+
+def get_count_sum(message):
+    count_name = message.text
+    bot.send_message(message.chat.id,  f'Записал название {count_name}')
+    current_count['name'] = count_name
+    msg = bot.send_message(message.chat.id, 'Введите остаток основного долга')
+    bot.register_next_step_handler(msg, get_remain_sum)
+
+
+def get_remain_sum(message):
+    remain_sum = message.text
+    bot.send_message(message.chat.id,  f'Записал остаток долга {remain_sum}')
+    current_count['main_debt_sum'] = remain_sum
+    msg = bot.send_message(message.chat.id, 'Введите процент')
+    bot.register_next_step_handler(msg, get_percent)
+
+
+def get_percent(message):
+    percent = message.text
+    bot.send_message(message.chat.id,  f'Записал процент {percent}')
+    current_count['percent'] = percent
+    msg = bot.send_message(message.chat.id, 'Введите дату начала ипотеки')
+    bot.register_next_step_handler(msg, get_start_date)
+
+
+def get_start_date(message):
+    mortgage_start = message.text
+    bot.send_message(message.chat.id, f'Записал дату начала {mortgage_start}')
+    current_count['mortgage_start'] = mortgage_start
+    msg = bot.send_message(message.chat.id, 'Введите дату первого платежа')
+    bot.register_next_step_handler(msg, get_first_payment_date)
+
+
+def get_first_payment_date(message):
+    first_payment_date = message.text
+    bot.send_message(message.chat.id, f'Записал дату первого платежа {first_payment_date}')
+    current_count['first_payment_date'] = first_payment_date
+    msg = bot.send_message(message.chat.id, 'Введите дату последнего платежа')
+    bot.register_next_step_handler(msg, get_last_payment_date)
+
+
+def get_last_payment_date(message):
+    last_payment_date = message.text
+    bot.send_message(message.chat.id, f'Записал дату последнего платежа {last_payment_date}')
+    current_count['last_payment_date'] = last_payment_date
+    final_count = create_count(message.chat.id, current_count)
+    bot.send_message(message.chat.id, f'Параметры вашего платежа {final_count.__dict__}')
+
 
 # async def on_default_command(chat: Chat, match):
 #     chat_id = chat.id
@@ -219,26 +257,13 @@ def on_default_command(message):
 #     game_statistics = await game_registry.get_game_statistics(game)
 #     await chat.send_text(**game.render_results_system_message(game_statistics))
 
-# def update_count(message):
-#     # response = message.send_text(**mortgage_count.render_system_message())
-#     # game_session_prototype.system_message_id = response["result"]["message_id"]
-#     logbook.info('Дополняем данные расчета')
-#     logbook.info(message)
-#     logbook.info('message.text = ', message.text)
-#     mortgage_count = MortgageCount(message.chat.id, message.text)
-#     mortgage_registry.update_count(mortgage_count)
 
-
-def create_count(message):
-    # response = message.send_text(**mortgage_count.render_system_message())
-    # game_session_prototype.system_message_id = response["result"]["message_id"]
-    logbook.info('Заполняем основные данные расчета')
-    logbook.info(message)
-    message_text = message.text
-    logbook.info(f'message.text = {message_text}')
-    mortgage_count = MortgageCount(message.chat.id, message_text)
-    logbook.info(mortgage_count.__dict__)
+def create_count(chat_id: int, current_count: dict):
+    mortgage_count = MortgageCount(chat_id, **current_count)
+    logbook.info(f'mortgage_count.__dict_ = {mortgage_count.__dict__}')
     mortgage_registry.create_count(mortgage_count)
+    mortgage_count = mortgage_registry.find_count(mortgage_count)
+    return mortgage_count
 #
 # async def edit_message(chat: Chat, game_session: MortgageCount):
 #     try:
@@ -248,10 +273,13 @@ def create_count(message):
 #
 
 
+# def test_fun(message):
+#     logbook.info('проверяем что коллбек отрабатывает каждый раз')
+#     bot.send_message(message.chat.id, f'коллбек отработал после текста {message.text}')
+
+
 def main():
-    logbook.info('Начинаем создавать бд')
     mortgage_registry.init_db(DB_PATH)
-    logbook.info('Создали бд')
     bot.polling(none_stop=True)
 
 

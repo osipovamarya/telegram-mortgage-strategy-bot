@@ -1,43 +1,50 @@
-from app.discussion_vote import DiscussionVote
-from app.estimation_vote import EstimationVote
 from app.telegram_user import TelegramUser
 # from app.mortgage import Mortgage
 import collections
+from dataclasses import dataclass
+from datetime import datetime
 import json
+import logbook
 
 
+@dataclass
 class MortgageCount:
-    PHASE_DISCUSSION = "discussion"
-    PHASE_ESTIMATION = "estimation"
-    PHASE_RESOLUTION = "resolution"
+    chat_id: int
+    name: str
+    main_debt_sum: float
+    percent: float
+    mortgage_start: datetime
+    first_payment_date: datetime
+    last_payment_date: datetime
+    id: int = None
+    month_payment: float = None
+    percent_sum_left: float = None
 
-    OPERATION_START_ESTIMATION = "start_estimation"
-    OPERATION_END_ESTIMATION = "end_estimation"
-    OPERATION_CLEAR_VOTES = "clear_votes"
-    OPERATION_RE_ESTIMATE = "re_estimate"
+    @property
+    def mortgage_start(self):
+        return self.__mortgage_start
 
-    CARD_DECK_LAYOUT = [
-        ["0.5", "1", "2", "3", "4", "5"],
-        ["6", "7", "8", "9", "10", "12"],
-        ["18", "24", "30", "36", "❓"],
-    ]
+    @mortgage_start.setter
+    def mortgage_start(self, value):
+        self.__mortgage_start = datetime.strptime(value, '%d.%m.%Y')
 
-    def __init__(self, chat_id: int, name: str):
-        self.id = None
-        self.chat_id = chat_id
-        self.name = name
-        self.main_debt_sum = None
-        self.percent = None
-        self.mortgage_start = None
-        self.first_payment_date = None
-        self.last_payment_date = None
+    @property
+    def first_payment_date(self):
+        return self.__first_payment_date
 
-    # @property
-    # def count_id(self) -> int:
-    #     if self.game is None:
-    #         return None
-    #     else:
-    #         return self.game.id
+    @first_payment_date.setter
+    def first_payment_date(self, value):
+        self.__first_payment_date = datetime.strptime(value, '%d.%m.%Y')
+
+    @property
+    def last_payment_date(self):
+        return self.__last_payment_date
+
+    @last_payment_date.setter
+    def last_payment_date(self, value):
+        self.__last_payment_date = datetime.strptime(value, '%d.%m.%Y')
+
+
     #
     # def start_estimation(self):
     #     self.phase = self.PHASE_ESTIMATION
@@ -59,25 +66,25 @@ class MortgageCount:
     # def add_estimation_vote(self, player, vote):
     #     self.estimation_votes[self.player_to_string(player)].set(vote)
     #
-    def render_system_message(self):
-        return {
-            "text": self.render_system_message_text(),
-            "reply_markup": json.dumps(self.render_system_message_buttons()),
-        }
-
-    def render_system_message_text(self):
-        result = ""
-
-        result += self.render_game_text()
-        result += "\n"
-        result += self.render_facilitator_text()
-        result += "\n"
-        result += self.render_topic_text()
-        result += "\n"
-        result += "\n"
-        result += self.render_votes_text()
-
-        return result
+    # def render_system_message(self):
+    #     return {
+    #         "text": self.render_system_message_text(),
+    #         "reply_markup": json.dumps(self.render_system_message_buttons()),
+    #     }
+    #
+    # def render_system_message_text(self):
+    #     result = ""
+    #
+    #     result += self.render_game_text()
+    #     result += "\n"
+    #     result += self.render_facilitator_text()
+    #     result += "\n"
+    #     result += self.render_topic_text()
+    #     result += "\n"
+    #     result += "\n"
+    #     result += self.render_votes_text()
+    #
+    #     return result
     #
     # def render_game_text(self):
     #     if self.game is None:
