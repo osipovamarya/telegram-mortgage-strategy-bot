@@ -5,6 +5,7 @@ from app.mortgage_count import MortgageCount
 from app.telegram_user import TelegramUser
 import sqlite3
 import json
+from collections import defaultdict
 
 
 class MortgageRegistry:
@@ -26,12 +27,12 @@ class MortgageRegistry:
                     chat_id INTEGER NOT NULL,
                     name TEXT NOT NULL,
                     main_debt_sum REAL,
-                    percent REAL,
+                    interest REAL,
                     mortgage_start DATE,
                     first_payment_date DATE,
                     last_payment_date DATE,
                     month_payment REAL,
-                    percent_sum_left REAL
+                    interest_sum_left REAL
                 )
             """
         )
@@ -61,28 +62,31 @@ class MortgageRegistry:
                     name,
                     chat_id,
                     main_debt_sum,
-                    percent,
+                    interest,
                     mortgage_start,
                     first_payment_date,
-                    last_payment_date
+                    last_payment_date,
+                    month_payment
                 ) VALUES (
                     :name,
                     :chat_id,
                     :main_debt_sum,
-                    :percent,
+                    :interest,
                     :mortgage_start,
                     :first_payment_date,
-                    :last_payment_date
+                    :last_payment_date,
+                    :month_payment
                 )
             """,
             {
                 "name": mortgage_count.name,
                 "chat_id": mortgage_count.chat_id,
                 "main_debt_sum": mortgage_count.main_debt_sum,
-                "percent": mortgage_count.percent,
+                "interest": mortgage_count.interest,
                 "mortgage_start": mortgage_count.mortgage_start,
                 "first_payment_date": mortgage_count.first_payment_date,
-                "last_payment_date": mortgage_count.last_payment_date
+                "last_payment_date": mortgage_count.last_payment_date,
+                "month_payment": mortgage_count.month_payment
             }
         )
         self.db_connection.commit()
@@ -92,13 +96,13 @@ class MortgageRegistry:
             """
                 UPDATE mortgage_count
                 SET main_debt_sum = :main_debt_sum,
-                    percent = :percent
+                    interest = :interest
                 WHERE id = :count_id
             """,
             {
                 "count_id": mortgage_count.id,
                 "main_debt_sum": mortgage_count.main_debt_sum,
-                "percent": mortgage_count.percent
+                "interest": mortgage_count.interest
             }
         )
         self.db_connection.commit()
@@ -107,11 +111,10 @@ class MortgageRegistry:
         cursor = self.db_connection.execute(
             """
                 SELECT
-                    id AS id,
-                    chat_id AS chat_id,
-                    name AS name,
-                    month_payment AS month_payment,
-                    percent_sum_left AS percent_sum_left
+                    id,
+                    chat_id,
+                    name,
+                    interest_sum_left
                 FROM mortgage_count
                 WHERE chat_id = :chat_id
                 AND name = :name
@@ -125,74 +128,31 @@ class MortgageRegistry:
         )
         row = cursor.fetchone()
         count.id = row["id"]
-        count.month_payment = row["month_payment"]
-        count.percent_sum_left = row["percent_sum_left"]
+        count.interest_sum_left = row["interest_sum_left"]
         return count
 
-    #
-    # async def find_active_game_session(self, chat_id: int, game_session_facilitator_message_id: int) -> MortgageCount:
-    #     query = """
-    #         SELECT
-    #             g.id AS game_id,
-    #             g.facilitator_message_id AS game_facilitator_message_id,
-    #             g.system_message_id AS game_system_message_id,
-    #             g.status AS game_status,
-    #             g.name AS game_name,
-    #             g.json_data AS game_json_data,
-    #             gs.facilitator_message_id AS game_session_facilitator_message_id,
-    #             gs.system_message_id AS game_session_system_message_id,
-    #             gs.phase AS game_session_phase,
-    #             gs.topic AS game_session_topic,
-    #             gs.json_data AS game_session_json_data
-    #         FROM game_session AS gs
-    #         LEFT JOIN game AS g
-    #         ON gs.game_id = g.id
-    #         WHERE gs.chat_id = :chat_id
-    #         AND gs.facilitator_message_id = :game_session_facilitator_message_id
-    #         ORDER BY gs.system_message_id DESC
-    #         LIMIT 1
-    #     """
-    #     parameters = {
-    #         "chat_id": chat_id,
-    #         "game_session_facilitator_message_id": game_session_facilitator_message_id,
-    #     }
-    #     async with self.db_connection.execute(query, parameters) as cursor:
-    #         row = await cursor.fetchone()
-    #
-    #         if not row:
-    #             return None
-    #
-    #         if row["game_id"] is None:
-    #             game = None
-    #         else:
-    #             game_json_data = json.loads(row["game_json_data"])
-    #             game_facilitator = TelegramUser.from_dict(game_json_data["facilitator"])
-    #
-    #             game = Mortgage.from_dict(
-    #                 chat_id,
-    #                 row["game_facilitator_message_id"],
-    #                 row["game_name"],
-    #                 game_facilitator,
-    #             )
-    #             game.id = row["game_id"]
-    #             game.system_message_id = row["game_system_message_id"]
-    #             game.status = row["game_status"]
-    #
-    #         game_session_json_data = json.loads(row["game_session_json_data"])
-    #         game_session_facilitator = TelegramUser.from_dict(game_session_json_data["facilitator"])
-    #
-    #         game_session = MortgageCount.from_dict(
-    #             game,
-    #             chat_id,
-    #             row["game_session_facilitator_message_id"],
-    #             row["game_session_topic"],
-    #             game_session_facilitator,
-    #             game_session_json_data,
-    #         )
-    #         game_session.system_message_id = row["game_session_system_message_id"]
-    #         game_session.phase = row["game_session_phase"]
-    #
-    #         return game_session
+    def find_old_count(self, chat_id: int, count_name: str) -> MortgageCount:
+        cursor = self.db_connection.execute(
+            """
+                SELECT *
+                FROM mortgage_count
+                WHERE chat_id = :chat_id
+                AND name = :name
+                ORDER BY id DESC
+                LIMIT 1
+            """,
+            {
+                "chat_id": chat_id,
+                "name": count_name,
+            }
+        )
+        row = cursor.fetchone()
+        if not row:
+            return None
+        fields = [column[0] for column in cursor.description]
+        my_dict = {key: value for key, value in zip(fields, row)}
+        return my_dict
+
     #
     #
     # async def update_game_session(self, game_session: MortgageCount):

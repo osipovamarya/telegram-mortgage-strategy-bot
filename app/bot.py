@@ -49,13 +49,13 @@ def get_remain_sum(message):
     bot.send_message(message.chat.id,  f'Записал остаток долга {remain_sum}')
     current_count['main_debt_sum'] = remain_sum
     msg = bot.send_message(message.chat.id, 'Введите процент')
-    bot.register_next_step_handler(msg, get_percent)
+    bot.register_next_step_handler(msg, get_interest)
 
 
-def get_percent(message):
-    percent = message.text
-    bot.send_message(message.chat.id,  f'Записал процент {percent}')
-    current_count['percent'] = percent
+def get_interest(message):
+    interest = message.text
+    bot.send_message(message.chat.id,  f'Записал процент {interest}')
+    current_count['interest'] = interest
     msg = bot.send_message(message.chat.id, 'Введите дату начала ипотеки')
     bot.register_next_step_handler(msg, get_start_date)
 
@@ -80,8 +80,21 @@ def get_last_payment_date(message):
     last_payment_date = message.text
     bot.send_message(message.chat.id, f'Записал дату последнего платежа {last_payment_date}')
     current_count['last_payment_date'] = last_payment_date
-    final_count = create_count(message.chat.id, current_count)
-    bot.send_message(message.chat.id, f'Параметры вашего платежа {final_count.__dict__}')
+    count_month_payment(message)
+
+
+def count_month_payment(message):
+    bot.send_message(message.chat.id, f'Рассчитываю размер ежемесячного платежа')
+    count_data = create_count(message.chat.id, current_count)
+    bot.send_message(message.chat.id, f'Параметры вашего платежа {count_data.__dict__}')
+    bot.send_message(message.chat.id, f'Размер ежемесячного платежа cоставляет {count_data.month_payment}')
+
+
+@bot.message_handler(commands=['main'])
+def get_count_name(message):
+    bot.send_message(message.chat.id, 'Ищу параметры основного платежа')
+    count_data = find_old_count(message.chat.id, 'main')
+    bot.send_message(message.chat.id, f'Параметры основного платежа {count_data}')
 
 
 # async def on_default_command(chat: Chat, match):
@@ -258,12 +271,17 @@ def get_last_payment_date(message):
 #     await chat.send_text(**game.render_results_system_message(game_statistics))
 
 
-def create_count(chat_id: int, current_count: dict):
+def create_count(chat_id: int, current_count: dict) :
     mortgage_count = MortgageCount(chat_id, **current_count)
     logbook.info(f'mortgage_count.__dict_ = {mortgage_count.__dict__}')
     mortgage_registry.create_count(mortgage_count)
     mortgage_count = mortgage_registry.find_count(mortgage_count)
     return mortgage_count
+
+
+def find_old_count(chat_id: int, count_name: str):
+    return mortgage_registry.find_old_count(chat_id, count_name)
+
 #
 # async def edit_message(chat: Chat, game_session: MortgageCount):
 #     try:

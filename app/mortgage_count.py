@@ -2,7 +2,9 @@ from app.telegram_user import TelegramUser
 # from app.mortgage import Mortgage
 import collections
 from dataclasses import dataclass
-from datetime import datetime
+from datetime import datetime, timedelta
+from dateutil import relativedelta
+from dateutil.rrule import rrule, MONTHLY
 import json
 import logbook
 
@@ -12,13 +14,13 @@ class MortgageCount:
     chat_id: int
     name: str
     main_debt_sum: float
-    percent: float
+    interest: float
     mortgage_start: datetime
     first_payment_date: datetime
     last_payment_date: datetime
+    month_payment: float
     id: int = None
-    month_payment: float = None
-    percent_sum_left: float = None
+    interest_sum_left: float = None
 
     @property
     def mortgage_start(self):
@@ -43,6 +45,42 @@ class MortgageCount:
     @last_payment_date.setter
     def last_payment_date(self, value):
         self.__last_payment_date = datetime.strptime(value, '%d.%m.%Y')
+
+    @property
+    def month_payment(self):
+        return self.__month_payment
+
+    @month_payment.setter
+    def month_payment(self, value=None):
+        period_interest = float(self.interest) / (100 * 12)
+        payment = float(self.main_debt_sum) * (period_interest / (1 - (1 + period_interest) ** -self.__payment_period_num()))
+        self.__month_payment = round(payment, 2)
+
+    def __payment_period_num(self):
+        if self.__mortgage_start.day < self.__first_payment_date.day:
+            previous_payment_date = datetime(self.__mortgage_start.year,
+                                             self.__mortgage_start.month - 1,
+                                             self.__first_payment_date.day)
+        else:
+            previous_payment_date = datetime(self.__mortgage_start.year,
+                                             self.__mortgage_start.month,
+                                             self.__first_payment_date.day)
+        all_mortgage_time = self.__last_payment_date - previous_payment_date
+        period_num = round((all_mortgage_time.days / 365) * 12)
+        logbook.info(f'period_num = {period_num}')
+        s1, e1 = previous_payment_date, self.__last_payment_date + timedelta(days=1)
+        s360 = (s1.year * 12 + s1.month) * 30 + s1.day
+        e360 = (e1.year * 12 + e1.month) * 30 + e1.day
+        dates_360 = divmod(e360 - s360, 30)[0]
+        logbook.info(f'dates_360 = {dates_360}')
+        rd = relativedelta.relativedelta(self.__last_payment_date, previous_payment_date)
+        rd_period = rd.months + (12*rd.years)
+        logbook.info(f'rd_period = {rd_period}')
+        # dates = [dt for dt in rrule(MONTHLY, bymonthday=2, dtstart=self.__first_payment_date, until=self.__last_payment_date)]
+        # logbook.info(f'dates = {dates}')
+        # dates_2 = [dt for dt in rrule(MONTHLY, bymonthday=2, dtstart=self.__first_payment_date.replace(day=1), until=self.__last_payment_date.replace(day=1))]
+        # logbook.info(f'dates_2 = {dates_2}')
+        return period_num
 
 
     #
