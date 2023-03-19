@@ -9,18 +9,30 @@ import json
 import logbook
 
 
-@dataclass
 class MortgageCount:
-    chat_id: int
-    name: str
-    main_debt_sum: float
-    interest: float
-    mortgage_start: datetime
-    first_payment_date: datetime
-    last_payment_date: datetime
-    month_payment: float
-    id: int = None
-    interest_sum_left: float = None
+    def __init__(self, chat_id: int, name: str, main_debt_sum: float, interest: float,
+                 mortgage_start: datetime, first_payment_date: datetime, last_payment_date: datetime):
+        self.chat_id = chat_id
+        self.name = name
+        self.main_debt_sum = main_debt_sum
+        self.interest = interest
+        self.mortgage_start = mortgage_start
+        self.first_payment_date = first_payment_date
+        self.last_payment_date = last_payment_date
+        self.__month_payment = None
+        self.id = None
+        self.interest_sum_left = None
+
+    # chat_id: int
+    # name: str
+    # main_debt_sum: float
+    # interest: float
+    # mortgage_start: datetime
+    # first_payment_date: datetime
+    # last_payment_date: datetime
+    # month_payment: float
+    # id: int = None
+    # interest_sum_left: float = None
 
     @property
     def mortgage_start(self):
@@ -28,7 +40,10 @@ class MortgageCount:
 
     @mortgage_start.setter
     def mortgage_start(self, value):
-        self.__mortgage_start = datetime.strptime(value, '%d.%m.%Y')
+        try:
+            self.__mortgage_start = datetime.strptime(value, '%d.%m.%Y')
+        except ValueError:
+            self.__mortgage_start = datetime.fromisoformat(value)
 
     @property
     def first_payment_date(self):
@@ -36,7 +51,10 @@ class MortgageCount:
 
     @first_payment_date.setter
     def first_payment_date(self, value):
-        self.__first_payment_date = datetime.strptime(value, '%d.%m.%Y')
+        try:
+            self.__first_payment_date = datetime.strptime(value, '%d.%m.%Y')
+        except ValueError:
+            self.__first_payment_date = datetime.fromisoformat(value)
 
     @property
     def last_payment_date(self):
@@ -44,30 +62,43 @@ class MortgageCount:
 
     @last_payment_date.setter
     def last_payment_date(self, value):
-        self.__last_payment_date = datetime.strptime(value, '%d.%m.%Y')
+        try:
+            self.__last_payment_date = datetime.strptime(value, '%d.%m.%Y')
+        except ValueError:
+            self.__last_payment_date = datetime.fromisoformat(value)
 
     @property
     def month_payment(self):
         return self.__month_payment
 
-    @month_payment.setter
-    def month_payment(self, value=None):
+    def set_month_payment(self, date=None, repayment_sum=None):
+        logbook.info(f'date = {date} and repayment_sum = {repayment_sum}')
+        logbook.info(f'date = {type(date)} and repayment_sum = {type(repayment_sum)}')
         period_interest = float(self.interest) / (100 * 12)
-        payment = float(self.main_debt_sum) * (period_interest / (1 - (1 + period_interest) ** -self.__payment_period_num()))
+        if date and repayment_sum:
+            new_debt_sum = self.main_debt_sum - float(repayment_sum)
+            logbook.info(f'new_debt_sum {new_debt_sum}')
+            payment = float(new_debt_sum) * (period_interest / (1 - (1 + period_interest) ** -self.__payment_period_num(date)))
+        else:
+            payment = float(self.main_debt_sum) * (period_interest / (1 - (1 + period_interest) ** -self.__payment_period_num()))
         self.__month_payment = round(payment, 2)
 
-    def __payment_period_num(self):
-        if self.__mortgage_start.day < self.__first_payment_date.day:
-            previous_payment_date = datetime(self.__mortgage_start.year,
-                                             self.__mortgage_start.month - 1,
+    def __payment_period_num(self, count_from=None):
+        count_from = datetime.fromisoformat(count_from) if count_from else self.__mortgage_start
+        logbook.info(f'count_from {count_from}')
+        if count_from.day < self.__first_payment_date.day:
+            previous_payment_date = datetime(count_from.year,
+                                             count_from.month - 1,
                                              self.__first_payment_date.day)
         else:
-            previous_payment_date = datetime(self.__mortgage_start.year,
-                                             self.__mortgage_start.month,
+            previous_payment_date = datetime(count_from.year,
+                                             count_from.month,
                                              self.__first_payment_date.day)
         all_mortgage_time = self.__last_payment_date - previous_payment_date
+        self.__first_payment_date.strftime('%d.%m.%Y')
         period_num = round((all_mortgage_time.days / 365) * 12)
         logbook.info(f'period_num = {period_num}')
+        # считаем другие варианты расчетов
         s1, e1 = previous_payment_date, self.__last_payment_date + timedelta(days=1)
         s360 = (s1.year * 12 + s1.month) * 30 + s1.day
         e360 = (e1.year * 12 + e1.month) * 30 + e1.day
@@ -76,11 +107,25 @@ class MortgageCount:
         rd = relativedelta.relativedelta(self.__last_payment_date, previous_payment_date)
         rd_period = rd.months + (12*rd.years)
         logbook.info(f'rd_period = {rd_period}')
-        # dates = [dt for dt in rrule(MONTHLY, bymonthday=2, dtstart=self.__first_payment_date, until=self.__last_payment_date)]
-        # logbook.info(f'dates = {dates}')
-        # dates_2 = [dt for dt in rrule(MONTHLY, bymonthday=2, dtstart=self.__first_payment_date.replace(day=1), until=self.__last_payment_date.replace(day=1))]
-        # logbook.info(f'dates_2 = {dates_2}')
+        # продолжаем
         return period_num
+
+    def payment_schedule(self):
+        schedule = {dt.strftime('%d.%m.%Y'):self.__month_payment for dt in rrule(MONTHLY, bymonthday=2, dtstart=self.__first_payment_date, until=self.__last_payment_date)}
+        # schedule = {dt.strftime('%d.%m.%Y'):self.__month_payment for dt in rrule(MONTHLY, bymonthday=2, dtstart=self.__first_payment_date.replace(day=1), until=self.__last_payment_date.replace(day=1))}
+        return schedule
+
+    # def new_month_payment(self, repayments: dict):
+    #     period_interest = float(self.interest) / (100 * 12)
+    #     repayment_sum = repayments['repayment_sum']
+    #     logbook.info(f'repayment_sum {repayment_sum}')
+    #     current_debt_sum = self.main_debt_sum - float('4762.46')
+    #     logbook.info(f'current_debt_sum {current_debt_sum}')
+    #     new_debt_sum = current_debt_sum - repayment_sum
+    #     logbook.info(f'new_debt_sum {new_debt_sum}')
+    #     payment = float(new_debt_sum) * (period_interest / (1 - (1 + period_interest) ** -self.__payment_period_num(repayments['date'])))
+    #     return round(payment, 2)
+
 
 
     #

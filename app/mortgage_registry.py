@@ -6,6 +6,8 @@ from app.telegram_user import TelegramUser
 import sqlite3
 import json
 from collections import defaultdict
+from datetime import datetime, timedelta
+
 
 
 class MortgageRegistry:
@@ -41,6 +43,7 @@ class MortgageRegistry:
             """
                 CREATE TABLE IF NOT EXISTS partial_repayment (
                     id INTEGER PRIMARY KEY AUTOINCREMENT,
+                    chat_id INTEGER NOT NULL,
                     mortgage_count_id INTEGER NOT NULL,
                     date DATE NOT NULL,
                     repayment_sum REAL NOT NULL
@@ -54,7 +57,7 @@ class MortgageRegistry:
             """
         )
 
-    def create_count(self, mortgage_count: MortgageCount):
+    def save_count(self, mortgage_count: MortgageCount):
         self.db_connection.execute(
             """
                 INSERT INTO mortgage_count
@@ -90,31 +93,12 @@ class MortgageRegistry:
             }
         )
         self.db_connection.commit()
-
-    def update_count(self, mortgage_count: MortgageCount):
-        self.db_connection.execute(
-            """
-                UPDATE mortgage_count
-                SET main_debt_sum = :main_debt_sum,
-                    interest = :interest
-                WHERE id = :count_id
-            """,
-            {
-                "count_id": mortgage_count.id,
-                "main_debt_sum": mortgage_count.main_debt_sum,
-                "interest": mortgage_count.interest
-            }
-        )
-        self.db_connection.commit()
-
-    def find_count(self, count: MortgageCount) -> MortgageCount:
         cursor = self.db_connection.execute(
             """
                 SELECT
                     id,
                     chat_id,
-                    name,
-                    interest_sum_left
+                    name
                 FROM mortgage_count
                 WHERE chat_id = :chat_id
                 AND name = :name
@@ -122,16 +106,34 @@ class MortgageRegistry:
                 LIMIT 1
             """,
             {
-                "chat_id": count.chat_id,
-                "name": count.name
+                "chat_id": mortgage_count.chat_id,
+                "name": mortgage_count.name
             }
         )
         row = cursor.fetchone()
-        count.id = row["id"]
-        count.interest_sum_left = row["interest_sum_left"]
-        return count
+        mortgage_count.id = row["id"]
+        # mortgage_count.interest_sum_left = row["interest_sum_left"]
+        return mortgage_count
 
-    def find_old_count(self, chat_id: int, count_name: str) -> MortgageCount:
+    def update_count(self, count: MortgageCount):
+        self.db_connection.execute(
+            """
+                UPDATE mortgage_count
+                SET main_debt_sum = :main_debt_sum,
+                    month_payment = :month_payment
+                WHERE chat_id = :chat_id
+                AND id = :id
+            """,
+            {
+                "main_debt_sum": count.main_debt_sum,
+                "month_payment": count.month_payment,
+                "chat_id": count.chat_id,
+                "id": count.id,
+            }
+        )
+        self.db_connection.commit()
+
+    def find_count(self, chat_id: int, count_name: str = 'main') -> MortgageCount:
         cursor = self.db_connection.execute(
             """
                 SELECT *
@@ -151,7 +153,56 @@ class MortgageRegistry:
             return None
         fields = [column[0] for column in cursor.description]
         my_dict = {key: value for key, value in zip(fields, row)}
+        count = MortgageCount(**my_dict)
+        return count
+
+    def save_payment(self, repayment_sum: float, count: MortgageCount, date: datetime = datetime.now()):
+        self.db_connection.execute(
+            """
+                INSERT INTO partial_repayment
+                (
+                    chat_id,
+                    mortgage_count_id,
+                    date,
+                    repayment_sum
+                ) VALUES (
+                    :chat_id,
+                    :mortgage_count_id,
+                    :date,
+                    :repayment_sum
+                )
+            """,
+            {
+                "chat_id": count.chat_id,
+                "mortgage_count_id": count.id,
+                "date": date,
+                "repayment_sum": repayment_sum
+            }
+        )
+        self.db_connection.commit()
+
+    def find_payments(self, count: MortgageCount):
+        cursor = self.db_connection.execute(
+            """
+                SELECT *
+                FROM partial_repayment
+                WHERE chat_id = :chat_id
+                AND mortgage_count_id = :mortgage_count_id
+                ORDER BY id DESC
+                LIMIT 1
+            """,
+            {
+                "chat_id": count.chat_id,
+                "mortgage_count_id": count.id,
+            }
+        )
+        row = cursor.fetchone()
+        if not row:
+            return None
+        fields = [column[0] for column in cursor.description]
+        my_dict = {key: value for key, value in zip(fields, row)}
         return my_dict
+
 
     #
     #

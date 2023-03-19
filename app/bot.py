@@ -21,6 +21,7 @@ This will add all parameters of mortgage and you could check if calculations is 
 bot = telebot.TeleBot(BOT_API_TOKEN)
 mortgage_registry = MortgageRegistry()
 current_count = defaultdict(str)
+# payment_schedule = defaultdict(str)
 init_logging()
 
 
@@ -91,11 +92,59 @@ def count_month_payment(message):
 
 
 @bot.message_handler(commands=['main'])
-def get_count_name(message):
-    bot.send_message(message.chat.id, 'Ищу параметры основного платежа')
+def get_main_count(message):
+    bot.send_message(message.chat.id, 'Ищу параметры основного расчета')
     count_data = find_old_count(message.chat.id, 'main')
-    bot.send_message(message.chat.id, f'Параметры основного платежа {count_data}')
+    bot.send_message(message.chat.id, f'Параметры основного расчета {count_data.__dict__}')
+    bot.send_message(message.chat.id, f'Составляю график платежей основного расчета')
+    payment_schedule = count_data.payment_schedule()
+    logbook.info(f'payment_schedule len = {len(payment_schedule)}')
+    bot.send_message(message.chat.id, f'{list(payment_schedule.keys())[:len(list(payment_schedule.keys()))//3]}')
+    bot.send_message(message.chat.id, f'{list(payment_schedule.keys())[-len(list(payment_schedule.keys()))//3:]}')
+    bot.send_message(message.chat.id, f'График платежей основного расчета:'
+                                      f' {list(payment_schedule.items())[:4]}\r\n'
+                                      f'...\r\n'
+                                      f'{list(payment_schedule.items())[-4:]}')
 
+    # for k, v in payment_schedule.copy().items():
+    #     if len(payment_schedule) >= 150:
+    #         part_dict.update({k: payment_schedule.pop(k)})
+    #         if len(part_dict) == 150:
+    #             logbook.info(f'part_dict = {part_dict}')
+    #             logbook.info(f'part_dict len = {len(part_dict)}')
+    #             bot.send_message(message.chat.id, f'График платежей основного расчета:'
+    #                                               f' {part_dict}')
+    #             part_dict = {}
+    #             logbook.info(f'payment_schedule len pop = {len(payment_schedule)}')
+    #     else:
+    #         logbook.info(f'payment_schedule = {payment_schedule}')
+    #         logbook.info(f'payment_schedule len = {len(payment_schedule)}')
+    #         bot.send_message(message.chat.id, f'График платежей основного расчета:'
+    #                                           f' {payment_schedule}')
+        # else:
+        #     logbook.info(f'payment_schedule = {payment_schedule}')
+        #     bot.send_message(message.chat.id, f'График платежей основного расчета:'
+        #                                       f' {payment_schedule}')
+
+
+@bot.message_handler(commands=['payment'])
+def get_partial_repayment(message):
+    msg = bot.send_message(message.chat.id, 'Внесите размер досрочного платежа')
+    bot.register_next_step_handler(msg, save_partial_repayment)
+
+
+def save_partial_repayment(message):
+    count_data = mortgage_registry.find_count(message.chat.id)
+    logbook.info(f'count data = {count_data}')
+    mortgage_registry.save_payment(message.text, count_data)
+    bot.send_message(message.chat.id, 'Рассчитываю новый ежемесячный платеж')
+    payments = mortgage_registry.find_payments(count_data)
+    logbook.info(f'payments = {payments}')
+
+    bot.send_message(message.chat.id, f'Новый ежемесячный платеж составляет {count_data.month_payment} рублей.')
+    count_data.main_debt_sum -= float(payments["repayment_sum"])
+    bot.send_message(message.chat.id, f'Новые параметры расчтеа {count_data.__dict__} рублей.')
+    mortgage_registry.update_count(count_data)
 
 # async def on_default_command(chat: Chat, match):
 #     chat_id = chat.id
@@ -271,29 +320,15 @@ def get_count_name(message):
 #     await chat.send_text(**game.render_results_system_message(game_statistics))
 
 
-def create_count(chat_id: int, current_count: dict) :
+def create_count(chat_id: int, current_count: dict) -> MortgageCount:
     mortgage_count = MortgageCount(chat_id, **current_count)
     logbook.info(f'mortgage_count.__dict_ = {mortgage_count.__dict__}')
-    mortgage_registry.create_count(mortgage_count)
-    mortgage_count = mortgage_registry.find_count(mortgage_count)
+    mortgage_count = mortgage_registry.save_count(mortgage_count)
     return mortgage_count
 
 
-def find_old_count(chat_id: int, count_name: str):
-    return mortgage_registry.find_old_count(chat_id, count_name)
-
-#
-# async def edit_message(chat: Chat, game_session: MortgageCount):
-#     try:
-#         await bot.edit_message_text(chat.id, game_session.system_message_id, **game_session.render_system_message())
-#     except BotApiError:
-#         logbook.exception("Error when updating markup")
-#
-
-
-# def test_fun(message):
-#     logbook.info('проверяем что коллбек отрабатывает каждый раз')
-#     bot.send_message(message.chat.id, f'коллбек отработал после текста {message.text}')
+def find_old_count(chat_id: int, count_name: str) -> MortgageCount:
+    return mortgage_registry.find_count(chat_id, count_name)
 
 
 def main():
