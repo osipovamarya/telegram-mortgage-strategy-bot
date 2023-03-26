@@ -1,81 +1,99 @@
-from app.telegram_user import TelegramUser
+from datetime import datetime, timedelta
+from dateutil import relativedelta
+from dateutil.rrule import rrule, MONTHLY
+import logbook
 
 
 class Mortgage:
-    def __init__(self, chat_id: int, facilitator_message_id: int, name: str, facilitator: TelegramUser):
-        self.id = None
-        self.system_message_id = None
+    def __init__(self, chat_id: int, name: str, main_debt_sum: float, interest: float,
+                 mortgage_start: datetime, first_payment_date: datetime, last_payment_date: datetime,
+                 month_payment: float = None, id: int = None):
+        self.id = id
         self.chat_id = chat_id
-        self.facilitator_message_id = facilitator_message_id
-        self.status = self.STATUS_STARTED
         self.name = name
-        self.facilitator = facilitator
+        self.main_debt_sum = main_debt_sum
+        self.interest = interest
+        self.mortgage_start = mortgage_start
+        self.first_payment_date = first_payment_date
+        self.last_payment_date = last_payment_date
+        self.month_payment = month_payment
 
-    def end(self):
-        self.status = self.STATUS_ENDED
+    @property
+    def mortgage_start(self):
+        return self.__mortgage_start
 
-    def is_active(self) -> bool:
-        return self.status == self.STATUS_STARTED
+    @mortgage_start.setter
+    def mortgage_start(self, value):
+        try:
+            self.__mortgage_start = datetime.strptime(value, '%d.%m.%Y')
+        except ValueError:
+            self.__mortgage_start = datetime.fromisoformat(value)
 
-    def render_system_message(self):
-        return {
-            "text": self.render_system_message_text(),
-        }
+    @property
+    def first_payment_date(self):
+        return self.__first_payment_date
 
-    def render_results_system_message(self, game_statistics):
-        return {
-            "text": self.render_results_system_message_text(game_statistics),
-        }
+    @first_payment_date.setter
+    def first_payment_date(self, value):
+        try:
+            self.__first_payment_date = datetime.strptime(value, '%d.%m.%Y')
+        except ValueError:
+            self.__first_payment_date = datetime.fromisoformat(value)
 
-    def render_system_message_text(self) -> str:
-        result = ""
+    @property
+    def last_payment_date(self):
+        return self.__last_payment_date
 
-        result += self.render_name_text()
-        result += "\n"
-        result += self.render_facilitator_text()
+    @last_payment_date.setter
+    def last_payment_date(self, value):
+        try:
+            self.__last_payment_date = datetime.strptime(value, '%d.%m.%Y')
+        except ValueError:
+            self.__last_payment_date = datetime.fromisoformat(value)
 
-        return result
+    @property
+    def month_payment(self):
+        return self.__month_payment
 
-    def render_results_system_message_text(self, game_statistics) -> str:
-        result = ""
-
-        result += self.render_name_text()
-        result += "\n"
-        result += self.render_facilitator_text()
-        result += "\n"
-        result += "\n"
-        result += self.render_statistics_text(game_statistics)
-
-        return result
-
-    def render_facilitator_text(self) -> str:
-        return "Facilitator: {}".format(self.facilitator.to_string())
-
-    def render_name_text(self) -> str:
-        if self.status == self.STATUS_STARTED:
-            return "Mortgage started: " + self.name
-        elif self.status == self.STATUS_ENDED:
-            return "Mortgage ended: " + self.name
+    @month_payment.setter
+    def month_payment(self, month_payment):
+        if month_payment:
+            logbook.info(f'зашли в if')
+            self.__month_payment = month_payment
         else:
-            return ""
+            logbook.info(f'зашли в else')
+            period_interest = float(self.interest) / (100 * 12)
+            payment = float(self.main_debt_sum) * (period_interest / (1 - (1 + period_interest) ** -self.__payment_period_num()))
+            self.__month_payment = round(payment, 2)
 
-    def render_statistics_text(self, game_statistics) -> str:
-        result = ""
+    def __payment_period_num(self, count_from=None):
+        count_from = datetime.fromisoformat(count_from) if count_from else self.__mortgage_start
+        logbook.info(f'count_from {count_from}')
+        if count_from.day < self.__first_payment_date.day:
+            previous_payment_date = datetime(count_from.year,
+                                             count_from.month - 1,
+                                             self.__first_payment_date.day)
+        else:
+            previous_payment_date = datetime(count_from.year,
+                                             count_from.month,
+                                             self.__first_payment_date.day)
+        all_mortgage_time = self.__last_payment_date - previous_payment_date
+        self.__first_payment_date.strftime('%d.%m.%Y')
+        period_num = round((all_mortgage_time.days / 365) * 12)
+        logbook.info(f'period_num = {period_num}')
+        # считаем другие варианты расчетов
+        s1, e1 = previous_payment_date, self.__last_payment_date + timedelta(days=1)
+        s360 = (s1.year * 12 + s1.month) * 30 + s1.day
+        e360 = (e1.year * 12 + e1.month) * 30 + e1.day
+        dates_360 = divmod(e360 - s360, 30)[0]
+        logbook.info(f'dates_360 = {dates_360}')
+        rd = relativedelta.relativedelta(self.__last_payment_date, previous_payment_date)
+        rd_period = rd.months + (12*rd.years)
+        logbook.info(f'rd_period = {rd_period}')
+        # продолжаем
+        return period_num
 
-        result += "Estimated topics: {}".format(game_statistics["estimated_game_sessions_count"])
-
-        return result
-
-    def to_dict(self):
-        return {
-            "facilitator": self.facilitator.to_dict(),
-        }
-
-    @classmethod
-    def from_dict(cls, chat_id: int, facilitator_message_id: int, name: str, facilitator: TelegramUser):
-        return cls(
-            chat_id,
-            facilitator_message_id,
-            name,
-            facilitator,
-        )
+    def payment_schedule(self):
+        schedule = {dt.strftime('%d.%m.%Y'):self.__month_payment for dt in rrule(MONTHLY, bymonthday=2, dtstart=self.__first_payment_date, until=self.__last_payment_date)}
+        # schedule = {dt.strftime('%d.%m.%Y'):self.__month_payment for dt in rrule(MONTHLY, bymonthday=2, dtstart=self.__first_payment_date.replace(day=1), until=self.__last_payment_date.replace(day=1))}
+        return schedule

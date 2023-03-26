@@ -2,7 +2,9 @@ import telebot
 from app.utils import init_logging
 # from app.telegram_user import TelegramUser
 # from app.mortgage import Mortgage
+from datetime import datetime, timedelta
 from app.mortgage_registry import MortgageRegistry
+from app.mortgage import Mortgage
 from app.mortgage_count import MortgageCount
 from collections import defaultdict
 import logbook
@@ -32,7 +34,7 @@ def on_help_command(message):
 
 @bot.message_handler(commands=['default'])
 def get_count_name(message):
-    bot.send_message(message.chat.id, 'Давайте начнем расчет, следуйте инструкциям бота')
+    bot.send_message(message.chat.id, 'Давайте сохраним вашу ипотеку, следуйте инструкциям бота')
     msg = bot.send_message(message.chat.id, 'Введите название')
     bot.register_next_step_handler(msg, get_count_sum)
 
@@ -86,15 +88,15 @@ def get_last_payment_date(message):
 
 def count_month_payment(message):
     bot.send_message(message.chat.id, f'Рассчитываю размер ежемесячного платежа')
-    count_data = create_count(message.chat.id, current_count)
-    bot.send_message(message.chat.id, f'Параметры вашего платежа {count_data.__dict__}')
-    bot.send_message(message.chat.id, f'Размер ежемесячного платежа cоставляет {count_data.month_payment}')
+    mortgage_data = create_mortgage(message.chat.id, current_count)
+    bot.send_message(message.chat.id, f'Параметры вашего платежа {mortgage_data.__dict__}')
+    bot.send_message(message.chat.id, f'Размер ежемесячного платежа cоставляет {mortgage_data.month_payment}')
 
 
 @bot.message_handler(commands=['main'])
 def get_main_count(message):
     bot.send_message(message.chat.id, 'Ищу параметры основного расчета')
-    count_data = find_old_count(message.chat.id, 'main')
+    count_data = find_old_mortgage(message.chat.id, 'main')
     bot.send_message(message.chat.id, f'Параметры основного расчета {count_data.__dict__}')
     bot.send_message(message.chat.id, f'Составляю график платежей основного расчета')
     payment_schedule = count_data.payment_schedule()
@@ -134,17 +136,21 @@ def get_partial_repayment(message):
 
 
 def save_partial_repayment(message):
-    count_data = mortgage_registry.find_count(message.chat.id)
-    logbook.info(f'count data = {count_data}')
-    mortgage_registry.save_payment(message.text, count_data)
+    mortgage_data = mortgage_registry.find_mortgage(message.chat.id, 'главный 2')
+    logbook.info(f'count data = {mortgage_data.__dict__}')
     bot.send_message(message.chat.id, 'Рассчитываю новый ежемесячный платеж')
-    payments = mortgage_registry.find_payments(count_data)
-    logbook.info(f'payments = {payments}')
-
+    count_data = MortgageCount(mortgage_data, message.chat.id)
     bot.send_message(message.chat.id, f'Новый ежемесячный платеж составляет {count_data.month_payment} рублей.')
-    count_data.main_debt_sum -= float(payments["repayment_sum"])
-    bot.send_message(message.chat.id, f'Новые параметры расчтеа {count_data.__dict__} рублей.')
-    mortgage_registry.update_count(count_data)
+    bot.send_message(message.chat.id, 'Записать платеж и расчет в бд?')
+    mortgage_registry.save_payment(message.text, mortgage_data, datetime.now())
+    mortgage_registry.save_count(count_data)
+    # payments = mortgage_registry.find_payments(count_data)
+    # logbook.info(f'payments = {payments}')
+    #
+    # bot.send_message(message.chat.id, f'Новый ежемесячный платеж составляет {count_data.month_payment} рублей.')
+    # count_data.main_debt_sum -= float(payments["repayment_sum"])
+    # bot.send_message(message.chat.id, f'Новые параметры расчтеа {count_data.__dict__} рублей.')
+    # mortgage_registry.update_count(count_data)
 
 # async def on_default_command(chat: Chat, match):
 #     chat_id = chat.id
@@ -320,15 +326,15 @@ def save_partial_repayment(message):
 #     await chat.send_text(**game.render_results_system_message(game_statistics))
 
 
-def create_count(chat_id: int, current_count: dict) -> MortgageCount:
-    mortgage_count = MortgageCount(chat_id, **current_count)
-    logbook.info(f'mortgage_count.__dict_ = {mortgage_count.__dict__}')
-    mortgage_count = mortgage_registry.save_count(mortgage_count)
-    return mortgage_count
+def create_mortgage(chat_id: int, current_count: dict) -> Mortgage:
+    mortgage = Mortgage(chat_id, **current_count)
+    logbook.info(f'mortgage_count.__dict_ = {mortgage.__dict__}')
+    mortgage = mortgage_registry.save_mortgage(mortgage)
+    return mortgage
 
 
-def find_old_count(chat_id: int, count_name: str) -> MortgageCount:
-    return mortgage_registry.find_count(chat_id, count_name)
+def find_old_mortgage(chat_id: int, count_name: str) -> Mortgage:
+    return mortgage_registry.find_mortgage(chat_id, count_name)
 
 
 def main():
